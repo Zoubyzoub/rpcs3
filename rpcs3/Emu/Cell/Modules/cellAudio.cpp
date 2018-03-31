@@ -645,12 +645,12 @@ error_code cellAudioGetPortBlockTag(u32 portNum, u64 blockNo, vm::ptr<u64> tag)
 	u64 tag_base = port.tag;
 	if (tag_base % port.block > blockNo)
 	{
-		tag_base &= ~(port.block - 1);
+		tag_base &= ~(port.block - 1ull);
 		tag_base += port.block;
 	}
 	else
 	{
-		tag_base &= ~(port.block - 1);
+		tag_base &= ~(port.block - 1ull);
 	}
 	*tag = tag_base + blockNo;
 

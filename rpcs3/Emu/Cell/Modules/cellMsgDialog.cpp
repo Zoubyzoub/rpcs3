@@ -268,6 +268,12 @@ s32 cellMsgDialogClose(f32 delay)
 		return CELL_MSGDIALOG_ERROR_DIALOG_NOT_OPENED;
 	}
 
+	if (delay == 0)
+	{
+		dlg->on_close(CELL_MSGDIALOG_BUTTON_NONE);
+		return CELL_OK;
+	}
+
 	thread_ctrl::spawn("cellMsgDialogClose() Thread", [=]()
 	{
 		while (dlg->state == MsgDialogState::Open && get_system_time() < wait_until)

@@ -278,7 +278,7 @@ error_code cellGameUpdateCheckStartAsync(vm::cptr<CellGameUpdateParam> param, vm
 	{
 		cb_func(ppu, CELL_GAMEUPDATE_RESULT_STATUS_NO_UPDATE, CELL_OK, userdata);
 		return CELL_OK;
-	});
+	}, cb_func.addr());
 	return CELL_OK;
 }
 
@@ -289,7 +289,7 @@ error_code cellGameUpdateCheckFinishAsync(vm::ptr<CellGameUpdateCallback> cb_fun
 	{
 		cb_func(ppu, CELL_GAMEUPDATE_RESULT_STATUS_FINISHED, CELL_OK, userdata);
 		return CELL_OK;
-	});
+	}, cb_func.addr());
 	return CELL_OK;
 }
 

@@ -3,8 +3,6 @@
 
 #include "cxml.h"
 
-namespace vm { using namespace ps3; }
-
 cxml_document::cxml_document()
 {
 	memset(this, 0, sizeof(*this));

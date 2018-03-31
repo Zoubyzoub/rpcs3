@@ -20,5 +20,5 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 static void setup_ps3_environment()
 {
-	vm::ps3::init();
+	vm::init();
 }

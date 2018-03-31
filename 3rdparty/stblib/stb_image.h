@@ -562,16 +562,13 @@ extern "C" {
 
 
 #include <stdarg.h>
-#include <stddef.h> // ptrdiff_t on osx
 #include <stdlib.h>
 #include <string.h>
 
 #if !defined(STBI_NO_LINEAR) || !defined(STBI_NO_HDR)
-#include <math.h>  // ldexp
 #endif
 
 #ifndef STBI_NO_STDIO
-#include <stdio.h>
 #endif
 
 #ifndef STBI_ASSERT

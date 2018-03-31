@@ -62,6 +62,8 @@
     <ClCompile>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <AdditionalIncludeDirectories>..\3rdparty\zlib;..\llvm\include;..\llvm_build\include;</AdditionalIncludeDirectories>
+      <BufferSecurityCheck Condition="'$(Configuration)|$(Platform)'=='Release - LLVM|x64'">false</BufferSecurityCheck>
+      <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='Release - LLVM|x64'">false</WholeProgramOptimization>
     </ClCompile>
     <PreBuildEvent>
       <Command>%windir%\sysnative\cmd.exe /c "$(SolutionDir)\Utilities\git-version-gen.cmd"</Command>

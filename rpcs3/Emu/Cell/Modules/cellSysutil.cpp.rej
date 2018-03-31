@@ -1,0 +1,786 @@
+diff a/rpcs3/Emu/Cell/Modules/cellSysutil.cpp b/rpcs3/Emu/Cell/Modules/cellSysutil.cpp	(rejected hunks)
+@@ -388,9 +781,10 @@ s32 cellSysutilSetBgmPlaybackExtraParam()
+ 	return CELL_OK;
+ }
+ 
+-s32 cellSysutilRegisterCallbackDispatcher()
++s32 cellSysutilRegisterCallbackDispatcher(u32 evnt, vm::ptr<CellSysutilCallback> callback)
+ {
+-	fmt::throw_exception("Unimplemented" HERE);
++    cellSysutil.todo("cellSysutilRegisterCallbackDispatcher(evnt=0x%x, callback=*0x%x)", evnt, callback);
++    return CELL_OK;
+ }
+ 
+ s32 cellSysutilUnregisterCallbackDispatcher()
+@@ -398,24 +792,265 @@ s32 cellSysutilUnregisterCallbackDispatcher()
+ 	fmt::throw_exception("Unimplemented" HERE);
+ }
+ 
+-s32 cellSysutilPacketRead()
++s32 cellSysutilPacketRead(ppu_thread& ppu, u32 slot, u32 evnt, u32 addr, u32 bufferSize, vm::ptr<u8> done)
+ {
+-	fmt::throw_exception("Unimplemented" HERE);
++    cellSysutil.error("cellSysutilPacketRead(slot=%d, event=0x%x, addr=*0x%x, bufferSize=0x%x, outVar=*0x%x)", slot, evnt, addr, bufferSize, done);
++
++    if (slot > 1)
++        return CELL_SYSUTIL_ERROR_INVALID_PACKET_SLOT;
++
++    const auto m = fxm::get_always<sysutil_service_manager>();
++    if (m->slotSync.evnt != evnt)
++        return CELL_SYSUTIL_ERROR_NO_PACKET_FOR_EVENT;
++
++    u32 bufferLeft = bufferSize;
++
++    u8 isDone = 0;
++
++    while (bufferLeft != 0 && isDone == 0) {
++        error_code ret = sys_mutex_lock(ppu, m->slotSync.shm_mutex, 0);
++        if (ret != CELL_OK)
++            return ret;
++
++        while ((((evnt == 0) && m->slotSync.sharedMemInfo->unk7 == 1) || ((evnt != 0) && m->slotSync.sharedMemInfo->unk7 == 2)) || m->slotSync.sharedMemInfo->bytesWritten == 0) {
++            if (m->slotSync.sharedMemInfo->unk9 != 0) {
++                sys_mutex_unlock(ppu, m->slotSync.shm_mutex);
++                return CELL_SYSUTIL_ERROR_UNK_ERROR; // no idea what this return signifiys 
++            }
++
++            ret = sys_cond_wait(ppu, m->slotSync.nem_cond, 0);
++            if (ret != CELL_OK)
++                return ret;
++        }
++
++        u32 rawr = m->slotSync.sharedMemInfo->bytesWritten;
++        while (m->slotSync.sharedMemInfo->bytesWritten != 0) {
++            s32 tmp = m->slotSync.sharedMemInfo->unk3 - m->slotSync.sharedMemInfo->unk4;
++
++            if (m->slotSync.sharedMemInfo->unk3 <= m->slotSync.sharedMemInfo->unk4)
++            {
++                tmp = m->slotSync.sharedMemInfo->size - m->slotSync.sharedMemInfo->unk4;
++                if (tmp > bufferLeft)
++                    tmp = bufferLeft;
++            }
++            else if (m->slotSync.sharedMemInfo->unk3 - m->slotSync.sharedMemInfo->unk4 <= bufferLeft)
++            {
++                // purposely left empty
++            }
++            else {
++                tmp = bufferLeft;
++            }
++            u32 addrSrc = m->slotSync.sharedAddr + m->slotSync.sharedMemInfo->unk4;
++            std::memcpy(vm::base(addr), vm::base(addrSrc), tmp);
++
++            bufferLeft -= tmp;
++            addr += tmp;
++            m->slotSync.sharedMemInfo->unk4 += tmp;
++
++            if (m->slotSync.sharedMemInfo->unk4 >= m->slotSync.sharedMemInfo->size)
++                m->slotSync.sharedMemInfo->unk4 = 0;
++
++            m->slotSync.sharedMemInfo->bytesWritten -= tmp;
++
++            if (bufferLeft == 0)
++                break;
++        }
++
++        if (m->slotSync.sharedMemInfo->unk6 == 2 && m->slotSync.sharedMemInfo->bytesWritten == 0) {
++            isDone = 1;
++            m->slotSync.sharedMemInfo->unk6 = 0;
++            m->slotSync.sharedMemInfo->unk7 = 0;
++        }
++
++        ret = sys_cond_signal(ppu, m->slotSync.nfl_cond);
++        if (ret != CELL_OK)
++            return ret;
++
++        ret = sys_mutex_unlock(ppu, m->slotSync.shm_mutex);
++        if (ret != CELL_OK)
++            return ret;
++    }
++
++    if (done != vm::null)
++        *done = isDone;
++    else if (isDone == 0)
++        return CELL_SYSUTIL_ERROR_UNK_ERROR2;
++
++    return bufferSize - bufferLeft;
+ }
+ 
+-s32 cellSysutilPacketWrite()
++s32 cellSysutilPacketWrite(ppu_thread& ppu, u32 slot, u32 evnt, u32 addr, u32 size, u32 end)
+ {
+-	fmt::throw_exception("Unimplemented" HERE);
++    cellSysutil.error("cellSysutilPacketWrite(slot=%d, event=0x%x, addr=*0x%x, size=0x%x, end=%d)", slot, evnt, addr, size, end);
++    if (size == 0)
++        return CELL_OK;
++
++    if (slot > 1)
++        return CELL_SYSUTIL_ERROR_INVALID_PACKET_SLOT;
++
++    const auto m = fxm::get_always<sysutil_service_manager>();
++    if (m->slotSync.evnt != evnt)
++        return CELL_SYSUTIL_ERROR_NO_PACKET_FOR_EVENT;
++    
++    while (size != 0) {
++        error_code ret = sys_mutex_lock(ppu, m->slotSync.shm_mutex, 0);
++        if (ret != CELL_OK)
++            return ret;
++
++        while (m->slotSync.sharedMemInfo->unk6 == 2 || m->slotSync.sharedMemInfo->bytesWritten >= m->slotSync.sharedMemInfo->size) {
++            if (m->slotSync.sharedMemInfo->unk9 != 0) {
++                sys_mutex_unlock(ppu, m->slotSync.shm_mutex);
++                return CELL_SYSUTIL_ERROR_UNK_ERROR; // no idea what this return signifiys 
++            }
++
++            ret = sys_cond_wait(ppu, m->slotSync.nfl_cond, 0);
++            if (ret != CELL_OK)
++                return ret;
++        }
++
++        m->slotSync.sharedMemInfo->unk6 = 1;
++
++        // *i think* this just sets 2 if event is 0, or 1 if its not
++        m->slotSync.sharedMemInfo->unk7 = evnt == 0 ? 2 : 1;
++
++        while (m->slotSync.sharedMemInfo->bytesWritten < m->slotSync.sharedMemInfo->size) {
++            s32 tmp = (s32)m->slotSync.sharedMemInfo->unk4 - m->slotSync.sharedMemInfo->unk3;
++            if (m->slotSync.sharedMemInfo->unk4 <= m->slotSync.sharedMemInfo->unk3) {
++                tmp = m->slotSync.sharedMemInfo->size - m->slotSync.sharedMemInfo->unk3;
++                if (tmp > size)
++                    tmp = size;
++            }
++            else if ((s32)m->slotSync.sharedMemInfo->unk4 - m->slotSync.sharedMemInfo->unk3 <= size) {
++                // purposely empty for now
++            }
++            else {
++                tmp = size;
++            }
++
++            u32 addrDst = m->slotSync.sharedAddr + m->slotSync.sharedMemInfo->unk3;
++            memcpy(vm::base(addrDst), vm::base(addr), size);
++            size -= tmp;
++            addr += tmp;
++
++            u32 tmp2 = tmp + m->slotSync.sharedMemInfo->unk3;
++            m->slotSync.sharedMemInfo->unk3 = tmp2;
++            if (tmp2 >= m->slotSync.sharedMemInfo->size) {
++                m->slotSync.sharedMemInfo->unk3 = 0;
++            }
++
++            m->slotSync.sharedMemInfo->bytesWritten += tmp;
++
++            if (size == 0)
++                break;
++        }
++
++        if (end != 0 && size == 0)
++            m->slotSync.sharedMemInfo->unk6 = 2;
++
++        ret = sys_cond_signal(ppu, m->slotSync.nem_cond);
++        if (ret != CELL_OK)
++            return ret;
++
++        ret = sys_mutex_unlock(ppu, m->slotSync.shm_mutex);
++        if (ret != CELL_OK)
++            return ret;
++    }
++
++    return CELL_OK;
+ }
+ 
+-s32 cellSysutilPacketBegin()
++// something special happens if a2 is 0, but w/e
++s32 cellSysutilPacketBegin(ppu_thread& ppu, u32 slot, u32 evnt)
+ {
+-	fmt::throw_exception("Unimplemented" HERE);
++    cellSysutil.error("cellSysutilPacketBegin(slot=0x%x, evnt=0x%x)", slot, evnt);
++
++    // only 0 and 1 are valid slots
++    if (slot > 1)
++        return CELL_SYSUTIL_ERROR_INVALID_PACKET_SLOT;
++
++    // too lazy to deal with multiple slots for now, slot 0 only looks to be used by the actual sysutil.lib anyway
++    if (slot == 0)
++        fmt::throw_exception("unimplemented slot... deal with slot 0");
++
++    const auto m = fxm::get_always<sysutil_service_manager>();
++
++    error_code ret = sys_mutex_lock(ppu, m->slotSync.shm_mutex, 0);
++    if (ret != CELL_OK)
++        return ret;
++
++    // this does something slightly different for some dumb reason
++    if (evnt == 0)
++        fmt::throw_exception("unimplemented event. deal with event 0");
++
++    while (m->slotSync.sharedMemInfo->packetInUse == 1) {
++        if (m->slotSync.sharedMemInfo->unk9 != 0) {
++            sys_mutex_unlock(ppu, m->slotSync.shm_mutex);
++            return CELL_SYSUTIL_ERROR_UNK_ERROR; // no idea what this return signifiys 
++        }
++
++        ret = sys_cond_wait(ppu, m->slotSync.ctf_cond, 0);
++        if (ret != CELL_OK)
++            return ret;
++    }
++
++    m->slotSync.sharedMemInfo->packetInUse = 1;
++    m->slotSync.evnt = evnt;
++
++    ret = sys_mutex_unlock(ppu, m->slotSync.shm_mutex);
++    return ret;
+ }
+ 
+-s32 cellSysutilPacketEnd()
++// this returns some address inside of sysutil. tracing through calls, it looks like this is shoved into the 'allocator_userdata' of a the cxml document packet
++// it also sets something to 1 at a memory location
++u32 cellSysutil_B47470E1(u32 slot)
+ {
+-	fmt::throw_exception("Unimplemented" HERE);
++    cellSysutil.todo("cellSysutil_B47470E1(slot=0x%x)", slot);
++    const auto m = fxm::get_always<sysutil_service_manager>();
++
++    // todo: deal with the multiple spots
++    if (m->packetMemInUse.compare_and_swap_test(false, true))
++        return m->cxml_packet_mem.addr();
++    return 0;
++}
++
++// stores something at the address given above based on slot
++void cellSysutil_40719C8C(u32 slot)
++{
++    cellSysutil.todo("cellSysutil_40719C8C(slot=0x%x)", slot);
++    const auto m = fxm::get_always<sysutil_service_manager>();
++
++    m->packetMemInUse = false;
++}
++
++s32 cellSysutilPacketEnd(ppu_thread& ppu, u32 slot, u32 evnt)
++{
++    cellSysutil.error("cellSysutilPacketEnd(slot=0x%x, evnt=0x%x)", slot, evnt);
++    if (slot > 1)
++        return CELL_SYSUTIL_ERROR_INVALID_PACKET_SLOT;
++
++    // too lazy to deal with multiple slots for now, slot 0 only looks to be used by the actual sysutil.lib anyway
++    if (slot == 0)
++        fmt::throw_exception("unimplemented slot... deal with slot 0");
++
++    const auto m = fxm::get_always<sysutil_service_manager>();
++
++    error_code ret = sys_mutex_lock(ppu, m->slotSync.shm_mutex, 0);
++    if (ret != CELL_OK)
++        return ret;
++
++    // this does something slightly different for some dumb reason
++    if (evnt == 0)
++        fmt::throw_exception("unimplemented event. deal with event 0");
++
++    ret = sys_cond_signal(ppu, m->slotSync.ctf_cond);
++    if (ret != CELL_OK)
++        return ret;
++
++    m->slotSync.sharedMemInfo->packetInUse = 0;
++    m->slotSync.evnt = -1;
++
++    ret = sys_mutex_unlock(ppu, m->slotSync.shm_mutex);
++    return ret;
+ }
+ 
+ s32 cellSysutilGameDataAssignVmc()
+@@ -453,64 +1088,460 @@ s32 cellSysutilSharedMemoryFree()
+ 	fmt::throw_exception("Unimplemented" HERE);
+ }
+ 
+-s32 _ZN4cxml7Element11AppendChildERS0_()
++// TODO: Currently we are missing some special reloc info when loading an sprx (i've only seen them in sysutil_* libraries), but the allocator callback address ends up with a function pointer that isnt relocated
++// there *seems* to be reloc info at the end of the fnid tables that should be parsed as elf32_rel or similar, but i cant figure out the exact method of figuring out where that data is from the segment tables
++// even if it were reloc'd correctly as is, it looks like the callback points in the middle a function, which as far as i can see, would screw up the stack pointer
++// so until whatever happening with those callback reloc's is figured out, this is just called manually instead, which looks to be the correct function anyway
++
++void cellSysutil_B59872EF(u32 allocType, vm::ptr<void> userData, vm::ptr<void> oldAddr, u32 requiredSize, vm::ptr<u32> addr, vm::ptr<u32> size)
+ {
+-	UNIMPLEMENTED_FUNC(cellSysutil);
+-	return CELL_OK;
++    cellSysutil.trace("cellSysutil_B59872EF(allocType=%d, userData=*0x%x, oldAddr=*0x%x, reqSize=%d, addr=*0x%x, size=*0x%x)", allocType, userData, oldAddr, requiredSize, addr, size);
++    // todo: use userData memaddr
++    const auto m = fxm::get_always<sysutil_service_manager>();
++    if (size != vm::null)
++        *size = 0;
++    if (addr != vm::null)
++        *addr = 0;
++
++    switch (allocType) {
++    case AllocationType_Alloc_Tree:
++    case AllocationType_Alloc_IDTable:
++    case AllocationType_Alloc_StringTable:
++    case AllocationType_Alloc_IntArrayTable:
++    case AllocationType_Alloc_FileTable:
++        if (m->memoryInUse[allocType] == true || requiredSize > 0x1000)
++            return;
++        m->memoryInUse[allocType] == true;
++        *addr = m->cxml_packet_mem.addr() + allocType * 0x1000;
++        *size = 0x1000;
++        return;
++    case AllocationType_Free_Tree:
++    case AllocationType_Free_IDTable:
++    case AllocationType_Free_StringTable:
++    case AllocationType_Free_IntArrayTable:
++    case AllocationType_Free_FileTable:
++        m->memoryInUse[allocType - 6] = false;
++        return;
++
++    }
+ }
+ 
+-s32 _ZN4cxml8DocumentC1Ev()
++// Constructor for blank cxml document
++s32 _ZN4cxml8DocumentC1Ev(vm::ptr<cxml_document> cxmlDoc)
+ {
+-	UNIMPLEMENTED_FUNC(cellSysutil);
++    cellSysutil.error("_ZN4cxml8DocumentC1Ev(cxmlDoc=*0x%x)", cxmlDoc);
++
++    std::memset(cxmlDoc.get_ptr(), 0, sizeof(cxml_document));
++    cxmlDoc->accessMode = 0;
++    cxmlDoc->header.version = 0x110;
++    std::memcpy(cxmlDoc->header.magic, "CXML", 4);
++
+ 	return CELL_OK;
+ }
+ 
+-s32 _ZN4cxml8DocumentD1Ev()
++s32 _ZN4cxml8Document5ClearEv(vm::ptr<cxml_document> cxmlDoc)
+ {
+-	UNIMPLEMENTED_FUNC(cellSysutil);
+-	return CELL_OK;
++    cellSysutil.error("_ZN4cxml8Document5ClearEv(cxmlDoc=*0x%x)", cxmlDoc);
++
++    std::memset(&cxmlDoc->header, 0, sizeof(cxml_document::Header));
++    cxmlDoc->header.version = 0x110;
++    std::memcpy(cxmlDoc->header.magic, "CXML", 4);
++
++    if (cxmlDoc->accessMode == 2)
++    {
++        cxmlDoc->accessMode = 0;
++        return CELL_OK;
++    }
++
++    if (cxmlDoc->allocator == vm::null)
++        return CELL_SYSUTIL_CXML_NO_ALLOCATOR;
++
++    if (cxmlDoc->tree != vm::null)
++        cellSysutil_B59872EF(AllocationType_Free_Tree, cxmlDoc->allocator_userdata, cxmlDoc->tree, 0, vm::null, vm::null);
++
++    cxmlDoc->tree.set(0);
++    cxmlDoc->tree_capacity = 0;
++
++    if (cxmlDoc->idtable != vm::null)
++        cellSysutil_B59872EF(AllocationType_Free_IDTable, cxmlDoc->allocator_userdata, cxmlDoc->idtable, 0, vm::null, vm::null);
++
++    cxmlDoc->idtable.set(0);
++    cxmlDoc->idtable_capacity = 0;
++
++    if (cxmlDoc->stringtable != vm::null)
++        cellSysutil_B59872EF(AllocationType_Free_StringTable, cxmlDoc->allocator_userdata, cxmlDoc->stringtable, 0, vm::null, vm::null);
++
++    cxmlDoc->stringtable.set(0);
++    cxmlDoc->stringtable_capacity = 0;
++
++    if (cxmlDoc->intarraytable != vm::null)
++        cellSysutil_B59872EF(AllocationType_Free_IntArrayTable, cxmlDoc->allocator_userdata, cxmlDoc->intarraytable, 0, vm::null, vm::null);
++
++    cxmlDoc->intarraytable.set(0);
++    cxmlDoc->intarraytable_capacity = 0;
++
++    if (cxmlDoc->floatarraytable != vm::null)
++        cellSysutil_B59872EF(AllocationType_Free_FloatArrayTable, cxmlDoc->allocator_userdata, cxmlDoc->floatarraytable, 0, vm::null, vm::null);
++
++    cxmlDoc->floatarraytable.set(0);
++    cxmlDoc->floatarraytable_capacity = 0;
++
++    if (cxmlDoc->filetable != vm::null)
++        cellSysutil_B59872EF(AllocationType_Free_FileTable, cxmlDoc->allocator_userdata, cxmlDoc->filetable, 0, vm::null, vm::null);
++
++    cxmlDoc->filetable.set(0);
++    cxmlDoc->filetable_capacity = 0;
++
++    cxmlDoc->accessMode = 0;
++
++    return CELL_OK;
+ }
+ 
+-s32 _ZN4cxml8Document5ClearEv()
++// Deconstructor for cxml
++s32 _ZN4cxml8DocumentD1Ev(vm::ptr<cxml_document> cxmlDoc)
+ {
+-	UNIMPLEMENTED_FUNC(cellSysutil);
+-	return CELL_OK;
++    cellSysutil.error("_ZN4cxml8DocumentD1Ev(cxmlDoc=*0x%x)", cxmlDoc);
++	return _ZN4cxml8Document5ClearEv(cxmlDoc);
+ }
+ 
+-s32 _ZN4cxml8Document13CreateElementEPKciPNS_7ElementE()
++// helper function
++s32 CXmlAddGetStringOffset(vm::ptr<cxml_document> cxmlDoc, vm::cptr<char> name, u32 nameLen)
+ {
+-	UNIMPLEMENTED_FUNC(cellSysutil);
+-	return CELL_OK;
++    int i = 0;
++    while (i < cxmlDoc->header.stringtable_size)
++    {
++        if (std::strcmp(cxmlDoc->stringtable.get_ptr() + i, name.get_ptr()) == 0)
++            return i;
++        i += std::strlen(cxmlDoc->stringtable.get_ptr() + i) + 1;
++    }
++    // else add at the end
++    if (cxmlDoc->stringtable_capacity < (cxmlDoc->header.stringtable_size + nameLen + 1))
++    {
++        const u32 reqSize = cxmlDoc->header.stringtable_size + nameLen + 1;
++        vm::var<u32> size;
++        vm::var<u32> addr;
++        
++        cellSysutil_B59872EF(AllocationType_Alloc_StringTable, cxmlDoc->allocator_userdata, cxmlDoc->stringtable, reqSize, addr, size);
++        if (addr == vm::null)
++            return CELL_SYSUTIL_CXML_ALLOCATION_ERROR;
++
++        cxmlDoc->stringtable.set(*addr);
++        cxmlDoc->stringtable_capacity = *size;
++    }
++
++    std::memcpy(cxmlDoc->stringtable.get_ptr() + cxmlDoc->header.stringtable_size, name.get_ptr(), nameLen + 1);
++
++    const u32 stringOffset = cxmlDoc->header.stringtable_size;
++    cxmlDoc->header.stringtable_size += nameLen + 1;
++
++    return stringOffset;
+ }
+ 
+-s32 _ZN4cxml8Document14SetHeaderMagicEPKc()
++s32 _ZN4cxml8Document13CreateElementEPKciPNS_7ElementE(vm::ptr<cxml_document> cxmlDoc, vm::cptr<char> name, u32 attrNum, vm::ptr<cxml_element> element)
+ {
+-	UNIMPLEMENTED_FUNC(cellSysutil);
++    cellSysutil.error("_ZN4cxml8Document13CreateElementEPKciPNS_7ElementE(cxmlDoc=*0x%x, name=%s, attrNum=%d, element=*0x%x)", cxmlDoc, name, attrNum, element);
++
++    if (cxmlDoc->accessMode != 0)
++        return CELL_SYSUTIL_CXML_ACCESS_VIOLATION;
++
++    if (cxmlDoc->allocator == vm::null)
++        return CELL_SYSUTIL_CXML_NO_ALLOCATOR;
++
++    const u32 neededSize = (attrNum << 4) + sizeof(cxml_childelement_bin);
++    const u32 nameLen = std::strlen(name.get_ptr());
++
++    if (cxmlDoc->header.tree_size + neededSize > cxmlDoc->tree_capacity)
++    {
++        vm::var<u32> size = 0;
++        vm::var<u32> addr = 0;
++        cellSysutil_B59872EF(AllocationType_Alloc_Tree, cxmlDoc->allocator_userdata, cxmlDoc->tree, cxmlDoc->header.tree_size + neededSize, addr, size);
++        if (addr == vm::null)
++            return CELL_SYSUTIL_CXML_ALLOCATION_ERROR;
++
++        cxmlDoc->tree.set(*addr);
++        cxmlDoc->tree_capacity = *size;
++    }
++
++    u32 treeOffset = cxmlDoc->header.tree_size;
++    cxmlDoc->header.tree_size += neededSize;
++
++    element->offset = treeOffset;
++    element->doc.set(cxmlDoc.addr());
++
++    const s32 stringOffset = CXmlAddGetStringOffset(cxmlDoc, name, nameLen);
++    if (stringOffset < 0)
++        return stringOffset;
++
++    auto& lastElement = vm::_ref<cxml_childelement_bin>(cxmlDoc->tree.addr() + treeOffset);
++
++    lastElement.name = stringOffset;
++    lastElement.attr_num = attrNum;
++    lastElement.parent = -1;
++    lastElement.prev = -1;
++    lastElement.next = -1;
++    lastElement.first_child = -1;
++    lastElement.last_child = -1;
++
++    const u32 counter = attrNum < 0 ? 1 : attrNum + 1;
++
++    for (int i = counter; i != 0; --i) {
++        auto& newElement = vm::_ref<cxml_childelement_bin>(cxmlDoc->tree.addr() + treeOffset + sizeof(cxml_childelement_bin));
++        newElement.name = -1;
++        newElement.attr_num = 0;
++        newElement.parent = 0;
++        newElement.prev = 0;
++
++        treeOffset += 0x10;
++    }
++
+ 	return CELL_OK;
+ }
+ 
+-s32 _ZN4cxml8Document16CreateFromBufferEPKvjb()
++s32 _ZN4cxml8Document14SetHeaderMagicEPKc(vm::ptr<cxml_document> cxmlDoc, vm::cptr<char[4]> magic)
+ {
+-	UNIMPLEMENTED_FUNC(cellSysutil);
++    cellSysutil.error("_ZN4cxml8Document14SetHeaderMagicEPKc(cxmlDoc=*0x%x, magic=\"%s\")", cxmlDoc, *magic);
++    std::memcpy(cxmlDoc->header.magic, *magic, 4);
+ 	return CELL_OK;
+ }
+ 
+-s32 _ZN4cxml8Document18GetDocumentElementEv()
++s32 _ZN4cxml8Document16CreateFromBufferEPKvjb(vm::ptr<cxml_document> cxmlDoc, vm::ptr<void> buf, u32 size, u8 accessMode)
+ {
+-	UNIMPLEMENTED_FUNC(cellSysutil);
++    cellSysutil.error("_ZN4cxml8Document16CreateFromBufferEPKvjb(cxmlDoc=*0x%x, buf=*0x%x, size=0x%x, accessMode=%d)", cxmlDoc, buf, size, accessMode);
++
++    _ZN4cxml8Document5ClearEv(cxmlDoc);
++
++    if (size < sizeof(cxml_document::Header))
++        return CELL_SYSUTIL_CXML_INVALID_BUFFER_SIZE;
++
++    // theres a weird formula for this, its probly just a sign change but too lazy to figure it out
++    // bnut it looks like this function is always given 0 in most cases so its fine
++    if (accessMode != 0)
++        fmt::throw_exception("createFromBuffer, accessMode not 0");
++
++    cxmlDoc->accessMode = accessMode;
++
++    std::memcpy(&cxmlDoc->header, vm::base(buf.addr()), sizeof(cxml_document::Header));
++
++    if (cxmlDoc->header.version != 0x110 && cxmlDoc->header.version != 0x100)
++        return CELL_SYSUTIL_CXML_INVALID_VERSION;
++
++    if ((cxmlDoc->header.intarraytable_size & 0x3) != 0)
++        return CELL_SYSUTIL_CXML_INVALID_TABLE;
++
++    if ((cxmlDoc->header.floatarraytable_size & 0x3) != 0)
++        return CELL_SYSUTIL_CXML_INVALID_TABLE;
++
++    if (accessMode != 0 && cxmlDoc->allocator == vm::null)
++        return CELL_SYSUTIL_CXML_NO_ALLOCATOR;
++
++    if (cxmlDoc->header.tree_size > 0) {
++        if (cxmlDoc->header.tree_offset >= size)
++            return CELL_SYSUTIL_CXML_INVALID_OFFSET;
++        if (cxmlDoc->header.tree_offset + cxmlDoc->header.tree_size > size)
++            return CELL_SYSUTIL_CXML_INVALID_BUFFER_SIZE;
++
++        if (accessMode == 0)
++            cxmlDoc->tree.set(buf.addr() + cxmlDoc->header.tree_offset);
++        else {
++            // todo: this, but with the allocator reloc's in their current state, i dont want to deal with this
++            fmt::throw_exception("createFromBuffer: unxpected accessMode");
++        }
++    }
++
++    if (cxmlDoc->header.idtable_size > 0) {
++        if (cxmlDoc->header.idtable_offset >= size)
++            return CELL_SYSUTIL_CXML_INVALID_OFFSET;
++        if (cxmlDoc->header.idtable_offset + cxmlDoc->header.idtable_size > size)
++            return CELL_SYSUTIL_CXML_INVALID_BUFFER_SIZE;
++
++        if (accessMode == 0)
++            cxmlDoc->idtable.set(buf.addr() + cxmlDoc->header.idtable_offset);
++        else {
++            // todo: this, but with the allocator reloc's in their current state, i dont want to deal with this
++            fmt::throw_exception("createFromBuffer: unxpected accessMode");
++        }
++    }
++
++    if (cxmlDoc->header.stringtable_size > 0) {
++        if (cxmlDoc->header.stringtable_offset >= size)
++            return CELL_SYSUTIL_CXML_INVALID_OFFSET;
++        if (cxmlDoc->header.stringtable_offset + cxmlDoc->header.stringtable_size > size)
++            return CELL_SYSUTIL_CXML_INVALID_BUFFER_SIZE;
++
++        if (accessMode == 0)
++            cxmlDoc->stringtable.set(buf.addr() + cxmlDoc->header.stringtable_offset);
++        else {
++            // todo: this, but with the allocator reloc's in their current state, i dont want to deal with this
++            fmt::throw_exception("createFromBuffer: unxpected accessMode");
++        }
++    }
++
++    // check str table ends on null char
++    const auto& strTest = vm::_ref<u8>(cxmlDoc->stringtable.addr() + cxmlDoc->header.stringtable_size - 1);
++    if (strTest != 0)
++        return CELL_SYSUTIL_CXML_INVALID_TABLE;
++
++    if (cxmlDoc->header.intarraytable_size > 0) {
++        if (cxmlDoc->header.intarraytable_offset >= size)
++            return CELL_SYSUTIL_CXML_INVALID_OFFSET;
++        if (cxmlDoc->header.intarraytable_offset + cxmlDoc->header.intarraytable_size > size)
++            return CELL_SYSUTIL_CXML_INVALID_BUFFER_SIZE;
++
++        if (accessMode == 0)
++            cxmlDoc->intarraytable.set(buf.addr() + cxmlDoc->header.intarraytable_offset);
++        else {
++            // todo: this, but with the allocator reloc's in their current state, i dont want to deal with this
++            fmt::throw_exception("createFromBuffer: unxpected accessMode");
++        }
++    }
++
++    if (cxmlDoc->header.floatarraytable_size > 0) {
++        if (cxmlDoc->header.floatarraytable_offset >= size)
++            return CELL_SYSUTIL_CXML_INVALID_OFFSET;
++        if (cxmlDoc->header.floatarraytable_offset + cxmlDoc->header.floatarraytable_size > size)
++            return CELL_SYSUTIL_CXML_INVALID_BUFFER_SIZE;
++
++        if (accessMode == 0)
++            cxmlDoc->floatarraytable.set(buf.addr() + cxmlDoc->header.floatarraytable_offset);
++        else {
++            // todo: this, but with the allocator reloc's in their current state, i dont want to deal with this
++            fmt::throw_exception("createFromBuffer: unxpected accessMode");
++        }
++    }
++
++    if (cxmlDoc->header.filetable_size > 0) {
++        if (cxmlDoc->header.filetable_offset >= size)
++            return CELL_SYSUTIL_CXML_INVALID_OFFSET;
++        if (cxmlDoc->header.filetable_offset + cxmlDoc->header.filetable_size > size)
++            return CELL_SYSUTIL_CXML_INVALID_BUFFER_SIZE;
++
++        if (accessMode == 0)
++            cxmlDoc->filetable.set(buf.addr() + cxmlDoc->header.filetable_offset);
++        else {
++            // todo: this, but with the allocator reloc's in their current state, i dont want to deal with this
++            fmt::throw_exception("createFromBuffer: unxpected accessMode");
++        }
++    }
++
+ 	return CELL_OK;
+ }
+ 
++bool DoesTreeHaveElement(vm::ptr<cxml_document> doc, s32 lastChild) {
++    if (lastChild < 0)
++        return false;
++
++    const u32 neededSize = lastChild + sizeof(cxml_childelement_bin);
++    u32 test = doc->header.tree_size;
++    if (doc->header.tree_size < neededSize)
++        return false;
++
++    s32 attrNum = static_cast<s32>(vm::_ref<cxml_childelement_bin>(doc->tree.addr() + lastChild).attr_num);
++    if (attrNum < 0)
++        return false;
++
++    if (((u32)attrNum << 4) + neededSize > doc->header.tree_size)
++        return false;
++    return true;
++}
++
++u32 _ZN4cxml8Document18GetDocumentElementEv(vm::ptr<cxml_element> element, vm::ptr<cxml_document> doc)
++{
++    cellSysutil.error("_ZN4cxml8Document18GetDocumentElementEv(element=*0x%x, doc=*0x%x)", element, doc);
++
++    if (!DoesTreeHaveElement(doc, 0)) {
++        element->doc.set(0);
++        element->offset = 0xFFFFFFFF;
++    }
++    else {
++        element->doc.set(doc.addr());
++        element->offset = 0;
++    }
++    
++	return element.addr();
++}
++
+ s32 _ZNK4cxml4File7GetAddrEv()
+ {
+ 	UNIMPLEMENTED_FUNC(cellSysutil);
+ 	return CELL_OK;
+ }
+ 
+-s32 _ZNK4cxml7Element12GetAttributeEPKcPNS_9AttributeE()
++// helper function
++vm::cptr<char> GetStringAddrFromNameOffset(vm::ptr<cxml_document> doc, s32 nameOffset) {
++    if (nameOffset < 0)
++        return vm::null;
++
++    if (doc->header.stringtable_size < nameOffset)
++        return vm::null;
++
++    return vm::addr_t(doc->stringtable.addr() + nameOffset);
++}
++
++// cxml::element::getAttribute
++s32 _ZNK4cxml7Element12GetAttributeEPKcPNS_9AttributeE(vm::ptr<cxml_element> cxmlElement, vm::cptr<char> name, vm::ptr<cxml_attribute> attribute)
+ {
+-	UNIMPLEMENTED_FUNC(cellSysutil);
+-	return CELL_OK;
++    cellSysutil.error("_ZNK4cxml7Element12GetAttributeEPKcPNS_9AttributeE(cxmlElement=*0x%x, name=%s, attribute=*0x%x)", cxmlElement, name, attribute);
++
++    if (cxmlElement->doc == vm::null)
++        return CELL_SYSUTIL_CXML_INVALID_DOC;
++
++    const be_t<u32> attr_num = vm::_ref<cxml_childelement_bin>(cxmlElement->doc->tree.addr() + cxmlElement->offset).attr_num;
++
++    u32 treeOffset = cxmlElement->doc->tree.addr() + cxmlElement->offset + sizeof(cxml_childelement_bin);
++    u32 elementOffset = cxmlElement->offset;
++
++    for (u32 i = 0; i < attr_num; ++i) {
++        const be_t<s32> nameOffset = vm::_ref<cxml_childelement_bin>(treeOffset).name;
++        const auto str = GetStringAddrFromNameOffset(cxmlElement->doc, nameOffset);
++
++        if (str != vm::null) {
++            if (std::strcmp(str.get_ptr(), name.get_ptr()) == 0) {
++                attribute->doc.set(cxmlElement->doc.addr());
++                attribute->element_offset = cxmlElement->offset;
++                attribute->offset = (elementOffset + sizeof(cxml_childelement_bin));
++                return CELL_OK;
++            }
++        }
++        treeOffset += 0x10;
++        elementOffset += 0x10;
++    }
++
++	return CELL_SYSUTIL_CXML_ELEMENT_CANT_FIND_ATTRIBUTE;
++}
++
++s32 _ZN4cxml7Element11AppendChildERS0_(vm::ptr<cxml_element> element, vm::ptr<cxml_element> newElement)
++{
++    cellSysutil.error("_ZN4cxml7Element11AppendChildERS0_(element=*0x%x, newElement=*0x%x)", element, newElement);
++    if (element->doc == vm::null)
++        return CELL_SYSUTIL_CXML_INVALID_DOC;
++    if (element->doc->accessMode != 0)
++        return CELL_SYSUTIL_CXML_ACCESS_VIOLATION;
++
++    if (newElement->offset == 0)
++        return CELL_SYSUTIL_CXML_ELEMENT_INVALID_OFFSET;
++
++    auto &newBin= vm::_ref<cxml_childelement_bin>(element->doc->tree.addr() + newElement->offset);
++
++    if (newBin.parent >= 0)
++        return CELL_SYSUTIL_CXML_ELEMENT_INVALID_OFFSET;
++
++    auto &bin = vm::_ref<cxml_childelement_bin>(element->doc->tree.addr() + element->offset);
++
++    const u32 prevLastChild = bin.last_child;
++
++    if (bin.first_child < 0)
++        bin.first_child = element->offset;
++    bin.last_child = newElement->offset;
++
++    newBin.prev = prevLastChild;
++    newBin.parent = element->offset;
++
++    if (DoesTreeHaveElement(element->doc, prevLastChild)) {
++        auto &prevElement = vm::_ref<cxml_childelement_bin>(element->doc->tree.addr() + prevLastChild);
++        prevElement.next = newElement->offset;
++    }
++
++    return CELL_OK;
+ }
+ 
+ s32 _ZNK4cxml7Element13GetFirstChildEv()
+@@ -677,4 +2054,13 @@ DECLARE(ppu_module_manager::cellSysutil)("cellSysutil", []()
+ 	REG_FUNC(cellSysutil, _ZN8cxmlutil7GetFileERKN4cxml7ElementEPKcPNS0_4FileE);
+ 
+ 	REG_FNID(cellSysutil, 0xE1EC7B6A, cellSysutil_E1EC7B6A);
++    REG_FNID(cellSysutil, 0xB47470E1, cellSysutil_B47470E1);
++    REG_FNID(cellSysutil, 0x20957CD4, cellSysutil_20957CD4);
++    REG_FNID(cellSysutil, 0x75AA7373, cellSysutil_75AA7373);
++    REG_FNID(cellSysutil, 0x35F7ED00, cellSysutil_35F7ED00);
++    REG_FNID(cellSysutil, 0xD3CDD694, cellSysutil_D3CDD694);
++    REG_FNID(cellSysutil, 0x40719C8C, cellSysutil_40719C8C);
++    REG_FNID(cellSysutil, 0xB59872EF, cellSysutil_B59872EF);
++
++    REG_FNID(cellSysutil, 0x7FC8F72C, cellSysutil_7FC8F72C);
+ });

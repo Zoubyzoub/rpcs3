@@ -221,9 +221,13 @@ s32 sceNpBasicRegisterHandler()
 	return CELL_OK;
 }
 
-s32 sceNpBasicRegisterContextSensitiveHandler()
+s32 sceNpBasicRegisterContextSensitiveHandler(const vm::ptr<SceNpCommunicationId> context, vm::ptr<SceNpBasicEventHandler> handler, vm::ptr<void> arg)
 {
-	UNIMPLEMENTED_FUNC(sceNp);
+	sysutil_register_cb([=](ppu_thread& ppu) -> s32
+	{
+		handler(ppu, SCE_NP_BASIC_EVENT_OFFLINE, 0, 0/*TODO*/, arg);
+		return CELL_OK;
+	}, handler.addr());
 	return CELL_OK;
 }
 

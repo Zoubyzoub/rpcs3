@@ -25,10 +25,10 @@ vfs_dialog::vfs_dialog(std::shared_ptr<gui_settings> guiSettings, std::shared_pt
 	vfs_dialog_tab* dev_flash_tab = new vfs_dialog_tab({ "dev_flash", emu_settings::dev_flashLocation, gui::fs_dev_flash_list, &g_cfg.vfs.dev_flash },
 		m_gui_settings, m_emu_settings, this);
 
-	vfs_dialog_tab* dev_flash2_tab = new vfs_dialog_tab({ "dev_flash2", emu_settings::dev_flash2Location, GUI::fs_dev_flash2_list, &g_cfg.vfs.dev_flash2 },
+	vfs_dialog_tab* dev_flash2_tab = new vfs_dialog_tab({ "dev_flash2", emu_settings::dev_flash2Location, gui::fs_dev_flash2_list, &g_cfg.vfs.dev_flash2 },
 		m_gui_settings, m_emu_settings, this);
 
-	vfs_dialog_tab* dev_usb000_tab = new vfs_dialog_tab({ "dev_usb000", emu_settings::dev_usb000Location, GUI::fs_dev_usb000_list, &g_cfg.vfs.dev_usb000 },
+	vfs_dialog_tab* dev_usb000_tab = new vfs_dialog_tab({ "dev_usb000", emu_settings::dev_usb000Location, gui::fs_dev_usb000_list, &g_cfg.vfs.dev_usb000 },
 		m_gui_settings, m_emu_settings, this);
 
 	tabs->addTab(emulator_tab, "$(EmulatorDir)");

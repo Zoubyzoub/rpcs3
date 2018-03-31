@@ -1,6 +1,6 @@
 #pragma once
 
-#define GSL_THROW_ON_CONTRACT_VIOLATION
+#define GSL_UNENFORCED_ON_CONTRACT_VIOLATION
 
 #pragma push_macro("new")
 #undef new

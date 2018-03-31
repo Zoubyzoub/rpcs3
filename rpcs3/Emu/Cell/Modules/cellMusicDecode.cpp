@@ -115,7 +115,7 @@ s32 cellMusicDecodeFinalize()
 		{
 			musicDecode->func(ppu, CELL_MUSIC_DECODE_EVENT_FINALIZE_RESULT, vm::addr_t(CELL_OK), musicDecode->userData);
 			return CELL_OK;
-		});
+		}, musicDecode->func.addr());
 	}
 
 	return CELL_OK;
@@ -152,7 +152,7 @@ s32 cellMusicDecodeSetDecodeCommand(s32 command)
 	{
 		musicDecode->func(ppu, CELL_MUSIC_DECODE_EVENT_SET_DECODE_COMMAND_RESULT, vm::addr_t(CELL_OK), musicDecode->userData);
 		return CELL_OK;
-	});
+	}, musicDecode->func.addr());
 
 	return CELL_OK;
 }

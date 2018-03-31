@@ -67,6 +67,10 @@ error_code sys_mutex_create(vm::ptr<u32> mutex_id, vm::ptr<sys_mutex_attribute_t
 			attr->name_u64);
 	}))
 	{
+		if (error == CELL_ESRCH)
+		{
+			sys_mutex.error("sys_mutex_create(): failed finding id. ipc_key: 0x%x, name: 0x%x", attr->ipc_key, attr->name_u64);
+		}
 		return error;
 	}
 

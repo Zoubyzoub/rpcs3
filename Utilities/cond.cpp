@@ -14,9 +14,7 @@ bool cond_variable::imp_wait(u32 _old, u64 _timeout) noexcept
 
 #ifdef _WIN32
 	auto signed_timeout = static_cast<LONGLONG>(_timeout);
-	if (signed_timeout != -1 && signed_timeout < 0) return __debugbreak(), false;
 	signed_timeout *= 10;
-	if (signed_timeout != -10 && signed_timeout < 0) return __debugbreak(), false;
 
 	LARGE_INTEGER timeout;
 	timeout.QuadPart = -signed_timeout;

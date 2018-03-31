@@ -14,8 +14,10 @@ struct lv2_config
 	std::weak_ptr<lv2_event_queue> queue;
 };
 
+typedef vm::ptr<void()> ServiceListenerCallback;
+
 // SysCalls
-error_code sys_config_open(u32 equeue_id, vm::ps3::ptr<u32> config_id);
+error_code sys_config_open(u32 equeue_id, vm::ptr<u32> config_id);
 error_code sys_config_close(u32 equeue_id);
-error_code sys_config_register_service(u32 config_id, s32 b, u32 c, u32 d, vm::ps3::ptr<u32> data, u32 size, vm::ps3::ptr<u32> output);
-error_code sys_config_add_service_listener(u32 a, s32 b, u32 c, u32 d, u32 e, u32 f, u32 g);
+error_code sys_config_register_service(u32 config_id, s32 b, u32 c, u32 d, vm::ptr<u32> data, u32 size, vm::ptr<u32> output);
+error_code sys_config_add_service_listener(u32 a, s64 b, u32 c, u32 d, vm::ptr<ServiceListenerCallback[2]> funcs, u32 f, u32 g);

@@ -1398,6 +1398,7 @@ s32 sys_net_bnet_close(ppu_thread& ppu, s32 s)
 {
 	sys_net.warning("sys_net_bnet_close(s=%d)", s);
 
+
 	const auto sock = idm::withdraw<lv2_socket>(s);
 
 	if (!sock)

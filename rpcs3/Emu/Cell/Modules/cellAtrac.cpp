@@ -3,6 +3,7 @@
 #include "Emu/Cell/PPUModule.h"
 
 #include "cellAtrac.h"
+#include "Emu/Cell/ErrorCodes.h"
 
 logs::channel cellAtrac("cellAtrac");
 

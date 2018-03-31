@@ -222,7 +222,7 @@ error_code cellWebBrowserInitialize(vm::ptr<CellWebBrowserSystemCallback> system
 	{
 		system_cb(ppu, CELL_SYSUTIL_WEBBROWSER_INITIALIZING_FINISHED, browser->userData);
 		return CELL_OK;
-	});
+	}, system_cb.addr());
 
 	return CELL_OK;
 }
@@ -252,7 +252,7 @@ void cellWebBrowserShutdown()
 
 		browser->system_cb(ppu, CELL_SYSUTIL_WEBBROWSER_SHUTDOWN_FINISHED, browser->userData);
 		return CELL_OK;
-	});
+	}, fxm::get_always<browser_t>()->system_cb.addr());
 }
 
 s32 cellWebBrowserUpdatePointerDisplayPos2()

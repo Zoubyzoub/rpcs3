@@ -2,8 +2,6 @@
 
 #include "Emu/Memory/Memory.h"
 
-namespace vm { using namespace ps3; }
-
 using CXmlAllocator = void(u32 allocType, vm::ptr<void> userData, vm::ptr<void> oldAddr, u32 requiredSize, vm::ptr<void> addr, vm::ptr<u32> size);
 
 #define CXML_TO_CELLSYSUTIL_ERROR(error) ((error) ^ 0x80550000 ^ 0x8002E000)

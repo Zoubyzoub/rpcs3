@@ -761,6 +761,12 @@
     <ClCompile Include="Emu\Cell\lv2\sys_net.cpp">
       <Filter>Emu\Cell\lv2</Filter>
     </ClCompile>
+    <ClCompile Include="Emu\Cell\lv2\sys_usbd.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Emu\Cell\lv2\sys_usbd.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Emu\Io\PadHandler.cpp">
       <Filter>Emu\Io</Filter>
     </ClCompile>
@@ -1452,6 +1458,12 @@
     </ClInclude>
     <ClInclude Include="Emu\Cell\lv2\sys_net.h">
       <Filter>Emu\Cell\lv2</Filter>
+    </ClInclude>
+    <ClInclude Include="Emu\Cell\lv2\sys_usbd.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Emu\Cell\lv2\sys_usbd.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Emu\RSX\overlay_controls.h">
       <Filter>Emu\GPU\RSX</Filter>

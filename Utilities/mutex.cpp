@@ -14,7 +14,7 @@ void shared_mutex::imp_lock_shared(s64 _old)
 
 	for (int i = 0; i < 10; i++)
 	{
-		busy_wait();
+		if (i != 0) busy_wait();
 
 		const s64 value = m_value.load();
 
@@ -173,7 +173,7 @@ void shared_mutex::imp_lock(s64 _old)
 
 	for (int i = 0; i < 10; i++)
 	{
-		busy_wait();
+		if (i != 0) { busy_wait(); }
 
 		const s64 value = m_value.load();
 
@@ -237,6 +237,7 @@ void shared_mutex::imp_lock_degrade()
 bool shared_mutex::try_lock_shared()
 {
 	// Conditional decrement
+	if (m_value < c_min) return false; // Fast path
 	return m_value.fetch_op([](s64& value) { if (value >= c_min) value -= c_min; }) >= c_min;
 }
 

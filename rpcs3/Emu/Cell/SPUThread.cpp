@@ -163,14 +163,14 @@ namespace spu
 				}
 			}
 
-			atomic_instruction_table[pc_offset]++;
+			++atomic_instruction_table[pc_offset];
 		}
 
 		void release_pc_address(u32 pc)
 		{
 			const u32 pc_offset = pc >> 2;
 
-			atomic_instruction_table[pc_offset]--;
+			--atomic_instruction_table[pc_offset];
 		}
 
 		struct concurrent_execution_watchdog
@@ -583,81 +583,11 @@ void SPUThread::do_dma_transfer(const spu_mfc_cmd& args, bool from_mfc)
 	}
 	default:
 	{
-		auto vdst = static_cast<__m128i*>(dst);
-		auto vsrc = static_cast<const __m128i*>(src);
-		auto vcnt = size / sizeof(__m128i);
+		auto vdst = static_cast<u64*>(dst);
+		auto vsrc = static_cast<const u64*>(src);
+		auto vcnt = size / sizeof(u64);
 
-		//if (is_get && !from_mfc)
-		{
-			while (vcnt >= 8)
-			{
-				const __m128i data[]
-				{
-					_mm_load_si128(vsrc + 0),
-					_mm_load_si128(vsrc + 1),
-					_mm_load_si128(vsrc + 2),
-					_mm_load_si128(vsrc + 3),
-					_mm_load_si128(vsrc + 4),
-					_mm_load_si128(vsrc + 5),
-					_mm_load_si128(vsrc + 6),
-					_mm_load_si128(vsrc + 7),
-				};
-
-				_mm_store_si128(vdst + 0, data[0]);
-				_mm_store_si128(vdst + 1, data[1]);
-				_mm_store_si128(vdst + 2, data[2]);
-				_mm_store_si128(vdst + 3, data[3]);
-				_mm_store_si128(vdst + 4, data[4]);
-				_mm_store_si128(vdst + 5, data[5]);
-				_mm_store_si128(vdst + 6, data[6]);
-				_mm_store_si128(vdst + 7, data[7]);
-
-				vcnt -= 8;
-				vsrc += 8;
-				vdst += 8;
-			}
-
-			while (vcnt--)
-			{
-				_mm_store_si128(vdst++, _mm_load_si128(vsrc++));
-			}
-
-			break;
-		}
-
-		// Disabled
-		while (vcnt >= 8)
-		{
-			const __m128i data[]
-			{
-				_mm_load_si128(vsrc + 0),
-				_mm_load_si128(vsrc + 1),
-				_mm_load_si128(vsrc + 2),
-				_mm_load_si128(vsrc + 3),
-				_mm_load_si128(vsrc + 4),
-				_mm_load_si128(vsrc + 5),
-				_mm_load_si128(vsrc + 6),
-				_mm_load_si128(vsrc + 7),
-			};
-
-			_mm_stream_si128(vdst + 0, data[0]);
-			_mm_stream_si128(vdst + 1, data[1]);
-			_mm_stream_si128(vdst + 2, data[2]);
-			_mm_stream_si128(vdst + 3, data[3]);
-			_mm_stream_si128(vdst + 4, data[4]);
-			_mm_stream_si128(vdst + 5, data[5]);
-			_mm_stream_si128(vdst + 6, data[6]);
-			_mm_stream_si128(vdst + 7, data[7]);
-
-			vcnt -= 8;
-			vsrc += 8;
-			vdst += 8;
-		}
-
-		while (vcnt--)
-		{
-			_mm_stream_si128(vdst++, _mm_load_si128(vsrc++));
-		}
+		__movsq(vdst, vsrc, vcnt);
 	}
 	}
 
@@ -712,15 +642,15 @@ void SPUThread::process_mfc_cmd()
 
 		if (is_polling)
 		{
-			vm::waiter waiter;
-			waiter.owner = this;
-			waiter.addr  = raddr;
-			waiter.size  = 128;
-			waiter.stamp = rtime;
-			waiter.data  = rdata.data();
-			waiter.init();
+			vm::waiter * waiter = new vm::waiter();
+			waiter->owner = this;
+			waiter->addr  = raddr;
+			//waiter.size  = 128;
+			waiter->stamp = rtime;
+			waiter->data  = rdata.data();
+			waiter->init();
 
-			while (vm::reservation_acquire(raddr, 128) == waiter.stamp && rdata == data)
+			while (vm::reservation_acquire(raddr, 128) == waiter->stamp && rdata == data)
 			{
 				if (test(state, cpu_flag::stop))
 				{
@@ -729,6 +659,8 @@ void SPUThread::process_mfc_cmd()
 
 				thread_ctrl::wait_for(100);
 			}
+
+			waiter->remove();
 		}
 		else if (s_use_rtm && utils::transaction_enter())
 		{
@@ -754,9 +686,11 @@ void SPUThread::process_mfc_cmd()
 		if (is_polling || UNLIKELY(vm::reservation_acquire(raddr, 128) != rtime))
 		{
 			// TODO: vm::check_addr
-			vm::reader_lock lock;
-			rtime = vm::reservation_acquire(raddr, 128);
-			rdata = data;
+			{
+				vm::reader_lock lock;
+				rtime = vm::reservation_acquire(raddr, 128);
+			}
+			memcpy(rdata.data(), data.data(), rdata.size() * sizeof(rdata[0]));
 		}
 
 		// Copy to LS
@@ -773,38 +707,52 @@ void SPUThread::process_mfc_cmd()
 
 		bool result = false;
 
-		if (raddr == ch_mfc_cmd.eal && rtime == vm::reservation_acquire(raddr, 128) && rdata == data)
-		{
-			// TODO: vm::check_addr
-			if (s_use_rtm && utils::transaction_enter())
+		vm::writer_lock lock(vm::try_to_lock);
+		if (lock.locked || memcmp(rdata.data(), data.data(), rdata.size() * sizeof(rdata[0])) == 0){
+			if (raddr == ch_mfc_cmd.eal && rtime == vm::reservation_acquire(raddr, 128))
 			{
-				if (!vm::reader_lock{vm::try_to_lock})
+				// TODO: vm::check_addr
+				if (s_use_rtm && utils::transaction_enter())
 				{
-					_xabort(0);
-				}
+					if (!vm::reader_lock{ vm::try_to_lock })
+					{
+						_xabort(0);
+					}
 
-				if (rtime == vm::reservation_acquire(raddr, 128) && rdata == data)
+					if (rtime == vm::reservation_acquire(raddr, 128) && rdata == data)
+					{
+						data = to_write;
+						result = true;
+
+						vm::reservation_update(raddr, 128);
+						vm::notify(raddr, 128);
+					}
+
+					_xend();
+				}
+				else if (lock.locked)
 				{
 					data = to_write;
-					result = true;
-
 					vm::reservation_update(raddr, 128);
+					lock.unlock();
+
+					result = true;
 					vm::notify(raddr, 128);
 				}
-
-				_xend();
-			}
-			else
-			{
-				vm::writer_lock lock;
-
-				if (rtime == vm::reservation_acquire(raddr, 128) && rdata == data)
+				else
 				{
-					data = to_write;
-					result = true;
+					// TODO timeout and check if the lock is still needed in loops
+					vm::writer_lock lock(0);
 
-					vm::reservation_update(raddr, 128);
-					vm::notify(raddr, 128);
+					if (rtime == vm::reservation_acquire(raddr, 128))
+					{
+						data = to_write;
+						vm::reservation_update(raddr, 128);
+						lock.unlock();
+
+						result = true;
+						vm::notify(raddr, 128);
+					}
 				}
 			}
 		}
@@ -816,11 +764,10 @@ void SPUThread::process_mfc_cmd()
 		else
 		{
 			ch_atomic_stat.set_value(MFC_PUTLLC_FAILURE);
-		}
-
-		if (raddr && !result)
-		{
-			ch_event_stat |= SPU_EVENT_LR;
+			if (raddr)
+			{
+				ch_event_stat |= SPU_EVENT_LR;
+			}
 		}
 
 		raddr = 0;
@@ -858,9 +805,11 @@ void SPUThread::process_mfc_cmd()
 			return;
 		}
 
-		vm::writer_lock lock(0);
 		data = to_write;
-		vm::reservation_update(ch_mfc_cmd.eal, 128);
+		{
+			vm::writer_lock lock(0);
+			vm::reservation_update(ch_mfc_cmd.eal, 128);
+		}
 		vm::notify(ch_mfc_cmd.eal, 128);
 
 		ch_atomic_stat.set_value(MFC_PUTLLUC_SUCCESS);
@@ -1239,16 +1188,17 @@ bool SPUThread::get_ch_value(u32 ch, u32& out)
 			return true;
 		}
 
-		vm::waiter waiter;
+		vm::waiter * waiter = nullptr;
 
 		if (ch_event_mask & SPU_EVENT_LR)
 		{
-			waiter.owner = this;
-			waiter.addr = raddr;
-			waiter.size = 128;
-			waiter.stamp = rtime;
-			waiter.data = rdata.data();
-			waiter.init();
+			waiter = new vm::waiter();
+			waiter->owner = this;
+			waiter->addr = raddr;
+			//waiter.size = 128;
+			waiter->stamp = rtime;
+			waiter->data = rdata.data();
+			waiter->init();
 		}
 
 		while (!(res = get_events(true)))
@@ -1261,6 +1211,11 @@ bool SPUThread::get_ch_value(u32 ch, u32& out)
 			thread_ctrl::wait_for(100);
 		}
 
+		if (waiter)
+		{
+			waiter->remove();
+		}
+		
 		out = res;
 		return true;
 	}

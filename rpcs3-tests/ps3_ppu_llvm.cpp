@@ -88,7 +88,7 @@ struct ppu_recompiler_llvm::PPUState {
 
 		address = addr;
 		for (int i = 0; i < (sizeof(mem_block) / 8); i++) {
-			mem_block[i] = vm::ps3::read64(address + (i * 8));
+			mem_block[i] = vm::read64(address + (i * 8));
 		}
 	}
 
@@ -112,7 +112,7 @@ struct ppu_recompiler_llvm::PPUState {
 		ppu.TB = TB;
 
 		for (int i = 0; i < (sizeof(mem_block) / 8); i++) {
-			vm::ps3::write64(address + (i * 8), mem_block[i]);
+			vm::write64(address + (i * 8), mem_block[i]);
 		}
 	}
 
@@ -295,7 +295,7 @@ namespace
 		PPUInterpreter * s_interpreter = &interpreter;
 
 		Emu.SetTestMode();
-		vm::ps3::init();
+		vm::init();
 		u32 addr = vm::alloc(1024, vm::memory_location_t::main);
 
 		PPUState input;
@@ -325,7 +325,7 @@ namespace
 		std::pair<std::unique_ptr<llvm::ExecutionEngine>, Executable> build_result = TestCompiler::template build_test(recomp_fn, args...);
 
 		Emu.SetTestMode();
-		vm::ps3::init();
+		vm::init();
 		u32 addr = vm::alloc(1024, vm::memory_location_t::main);
 
 		PPUState recomp_output_state;

@@ -227,5 +227,5 @@ struct CellSysutilSharedMemoryPoolInformation
 	u32 count;
 };
 
-extern bool sysutil_register_cb(std::function<s32(ppu_thread&)>&&, u32 callback_addr);
+extern bool sysutil_register_cb(std::function<s32(ppu_thread&)>&&, u32 callback_addr=0);
 extern void sysutil_send_system_cmd(u64 status, u64 param);

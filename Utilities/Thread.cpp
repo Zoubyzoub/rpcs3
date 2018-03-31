@@ -1295,6 +1295,7 @@ bool handle_access_violation(u32 addr, bool is_writing, x64_context* context)
 			}
 		}
 
+		return false;
 		vm::temporary_unlock(*cpu);
 		LOG_FATAL(MEMORY, "Access violation %s location 0x%x", is_writing ? "writing" : "reading", addr);
 		cpu->state += cpu_flag::dbg_pause;
@@ -1701,10 +1702,6 @@ void thread_ctrl::_push(task_stack task)
 
 bool thread_ctrl::_wait_for(u64 usec)
 {
-	if ((s64)usec < -1)
-	{
-		__debugbreak();
-	}
 	auto _this = g_tls_this_thread;
 
 	struct half_lock

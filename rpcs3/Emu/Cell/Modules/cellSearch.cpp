@@ -69,7 +69,7 @@ error_code cellSearchInitialize(CellSearchMode mode, u32 container, vm::ptr<Cell
 	{
 		func(ppu, CELL_SEARCH_EVENT_INITIALIZE_RESULT, CELL_OK, vm::null, userData);
 		return CELL_OK;
-	});
+	}, func.addr());
 
 	return CELL_OK;
 }
@@ -84,7 +84,7 @@ error_code cellSearchFinalize()
 
 		search->func(ppu, CELL_SEARCH_EVENT_FINALIZE_RESULT, CELL_OK, vm::null, search->userData);
 		return CELL_OK;
-	});
+	}, fxm::get_always<search_t>()->func.addr());
 
 	return CELL_OK;
 }
@@ -110,7 +110,7 @@ error_code cellSearchStartListSearch(CellSearchListSearchType type, CellSearchSo
 
 		search->func(ppu, CELL_SEARCH_EVENT_LISTSEARCH_RESULT, CELL_OK, vm::cast(resultParam.addr()), search->userData);
 		return CELL_OK;
-	});
+	}, fxm::get_always<search_t>()->func.addr());
 
 	return CELL_OK;
 }
@@ -136,7 +136,7 @@ error_code cellSearchStartContentSearchInList(vm::cptr<CellSearchContentId> list
 
 		search->func(ppu, CELL_SEARCH_EVENT_CONTENTSEARCH_INLIST_RESULT, CELL_OK, vm::cast(resultParam.addr()), search->userData);
 		return CELL_OK;
-	});
+	}, fxm::get_always<search_t>()->func.addr());
 
 	return CELL_OK;
 }
@@ -162,7 +162,7 @@ error_code cellSearchStartContentSearch(CellSearchContentSearchType type, CellSe
 
 		search->func(ppu, CELL_SEARCH_EVENT_CONTENTSEARCH_RESULT, CELL_OK, vm::cast(resultParam.addr()), search->userData);
 		return CELL_OK;
-	});
+	}, fxm::get_always<search_t>()->func.addr());
 
 	return CELL_OK;
 }
@@ -188,7 +188,7 @@ error_code cellSearchStartSceneSearchInVideo(vm::cptr<CellSearchContentId> video
 
 		search->func(ppu, CELL_SEARCH_EVENT_SCENESEARCH_INVIDEO_RESULT, CELL_OK, vm::cast(resultParam.addr()), search->userData);
 		return CELL_OK;
-	});
+	}, fxm::get_always<search_t>()->func.addr());
 
 	return CELL_OK;
 }
@@ -214,7 +214,7 @@ error_code cellSearchStartSceneSearch(CellSearchSceneSearchType searchType, vm::
 
 		search->func(ppu, CELL_SEARCH_EVENT_SCENESEARCH_RESULT, CELL_OK, vm::cast(resultParam.addr()), search->userData);
 		return CELL_OK;
-	});
+	}, fxm::get_always<search_t>()->func.addr());
 
 	return CELL_OK;
 }
