@@ -29,7 +29,7 @@ bool utils::has_rtm()
 {
 	// Check RTM and MPX extensions in order to filter out TSX on Haswell CPUs
 	static const bool g_value = get_cpuid(0, 0)[0] >= 0x7 && (get_cpuid(7, 0)[1] & 0x4800) == 0x4800;
-	return g_value;
+	return true;
 }
 
 bool utils::has_512()
